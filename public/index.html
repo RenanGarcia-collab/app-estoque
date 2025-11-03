@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📦 Sistema de Pedidos - Estoque</title>
+<link rel="manifest" href="/manifest.json">
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(to bottom, #f0f9ff, #e0f2fe); }
+header { text-align:center; margin-bottom:20px; }
+textarea, input { width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; margin-bottom:10px; }
+button { cursor:pointer; border:none; border-radius:8px; padding:10px; font-weight:bold; transition: transform 0.1s; }
+button:hover { transform: scale(1.05); }
+.card { background:white; border-radius:12px; padding:15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+</style>
+</head>
+
+<body>
+
+<header>
+<h1 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold">📦 Sistema de Pedidos - Estoque</h1>
+<p class="text-slate-700 sm:text-base md:text-lg lg:text-xl">Brava Internet / Estoque🖥️</p>
+</header>
+
+<div class="card max-w-xl mx-auto p-4 sm:p-6 md:p-8">
+  <input id="nome" placeholder="Seu nome (Técnico)" class="mb-2 p-2 rounded border w-full" />
+  <textarea id="pedido" rows="5" placeholder="Digite cada item em uma linha, use | quantidade se quiser" class="mb-2 p-2 rounded border w-full"></textarea>
+  <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded w-full sm:w-3/4 md:w-1/2 lg:w-1/3" onclick="enviarPedido()">🚀 Enviar Pedido</button>
+</div>
+
+<h2 class="text-xl font-semibold mt-6 mb-2 text-center">📋 Pedidos Pendentes</h2>
+<div id="lista" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[70vh] overflow-auto px-2"></div>
+
+<audio id="soundPedido" src="ding.wav"></audio>
+<audio id="soundPronto" src="ding.wav"></audio>
+
+<script>
+const socket = io();
+const lista = document.getElementById('lista');
+const nomeInput = document.getElementById('nome');
+const pedidoInput = document.getElementById('pedido');
+const soundPedido = document.getElementById('soundPedido');
+const soundPronto = document.getElementById('soundPronto');
+
+// enviar pedido
+function enviarPedido(){
+  const nome = nomeInput.value.trim();
+  const linhas = pedidoInput.value.trim().split('\n').filter(l=>l);
+  if(!nome || linhas.length==0){ alert("Preencha seu nome e itens!"); return; }
+  const itens = linhas.map(l=>{
+    const parts = l.split('|').map(p=>p.trim());
+    return {item:parts[0], qtd: parts[1]||1};
+  });
+  socket.emit('novoPedido',{tecnico:nome,itens});
+  pedidoInput.value='';
+}
+
+// marcar pedido pronto
+function pronto(id, tecnico){
+  socket.emit('pedidoPronto',{id, tecnico});
+}
+
+// limpar pedido
+function limpar(id){
+  socket.emit('limparPedido', id);
+}
+
+// atualizar lista em tempo real
+socket.on('listaPedidos', pedidos=>{
+  lista.innerHTML = pedidos.map(p=>`
+    <div class="card p-3">
+      <div class="flex justify-between items-center">
+        <b class="text-lg md:text-xl lg:text-2xl">👨‍🔧 ${p.tecnico}</b>
+        <span class="text-sm text-gray-500">${new Date(p.time).toLocaleString()}</span>
+      </div>
+      <ul class="ml-4 mt-1 list-disc">
+        ${p.itens.map(it=>`<li>${it.item} — ${it.qtd}</li>`).join('')}
+      </ul>
+      <div class="flex flex-col sm:flex-row gap-2 mt-2">
+        <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded flex-1" onclick="pronto(${p.id}, '${p.tecnico}')">✅ Pedido Pronto</button>
+        <button class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded flex-1" onclick="limpar(${p.id})">🗑️ Limpar</button>
+      </div>
+    </div>
+  `).join('');
+  
+  // scroll automático para mostrar o último pedido
+  lista.scrollTop = lista.scrollHeight;
+});
+
+// sons
+socket.on('somPedido', ()=> soundPedido.play());
+socket.on('somPronto', ()=> soundPronto.play());
+
+// anunciar pedido pronto
+socket.on('pedidoPronto', data=>{
+  speechSynthesis.speak(new SpeechSynthesisUtterance(`Atenção ${data.tecnico}, seu pedido está pronto!`));
+});
+
+// registrar service worker
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/service-worker.js');
+}
+</script>
+
+</body>
+</html>
